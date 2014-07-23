@@ -3,10 +3,8 @@
             [clojure.walk :as w]
             [taoensso.timbre.profiling :as p]))
 
-;; TODO make this fn swappable
 (defn variable? [x] (and (symbol? x) (= \? (first (name x)))))
 
-;; TODO what about using pattern matching here?
 (defn occurs?
   "Does the varaible exist in the form/expression?"
   [variable form]
@@ -42,17 +40,14 @@
   "Convert literal data forms to lists."
   [form]
   ;; TODO - add vector, others if needed
-  ;; TODO - this might be a bug, if the map contains values that are vectors
-  ;; for example.
-  (cond (map? form) (cons 'hash-map (flatten (seq form)))
+  (cond (map? form) (cons 'hash-map (seq form))
         (set? form) (cons 'set (seq form))
         :else form))
 
-(flatten (seq {:a {1 2} :b 2}))
-
-(defn unify*
+(defn robinson-unify*
   "Try and unify two forms, returning the set of substitutions if success."
   [occurs-check? form1 form2]
+  ;; TODO should we be calling convert at each step?
   (loop [f1 (convert form1)
          f2 (convert form2)
          s []]
@@ -64,15 +59,15 @@
         (and (nil? d1) (nil? d2)) [f1 f2 s]
         ;; Different non-variables, no way to unify.
         (and (not d1-v?) (not d2-v?)) nil
-        (or d1-v? d2-v?) (let [trans (if d1-v? [d1 d2] [d2 d1])]
-                           (if (and occurs-check? (apply occurs-check? trans))
-                             nil
-                             (recur (apply subst (conj trans f1))
-                                    (apply subst (conj trans f2))
-                                    (conj s trans))))))))
+        (or d1-v? d2-v?) (let [v (if d1-v? d1 d2)
+                               f (if d1-v? d2 d1)]
+                           (when-not (and occurs-check? (occurs-check? v f))
+                             (recur (subst v f f1)
+                                    (subst v f f2)
+                                    (conj s [v f]))))))))
 
-(def unify (partial unify* nil))
-(def unify-with-occurs (partial unify* occurs?))
+(def unify (partial robinson-unify* nil))
+(def unify-with-occurs (partial robinson-unify* occurs?))
 
 (defn ->s [unify-result] (nth unify-result 2))
 
@@ -90,5 +85,5 @@
   (p/p :mine (unify form1 form2)))
 
 #_(p/profile :info :foo (dotimes [n 1000] (doit-no-occurs)))
-(p/profile :info :foo (dotimes [n 1000] (doit-with-occurs)))
+#_(p/profile :info :foo (dotimes [n 1000] (doit-with-occurs)))
 
