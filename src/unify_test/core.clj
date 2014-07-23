@@ -6,33 +6,32 @@
 ;; TODO make this fn swappable
 (defn variable? [x] (and (symbol? x) (= \? (first (name x)))))
 
+;; TODO what about using pattern matching here?
 (defn occurs?
- "Does the varaible exist in the form/expression?"
+  "Does the varaible exist in the form/expression?"
   [variable form]
-  (->> form
-       (w/prewalk #(if (not (coll? %)) (= variable %) %))
-       (flatten)
-       (some identity)))
+  (cond
+    (nil? form)
+    false
+
+    (= variable form)
+    true
+
+    (coll? form)
+    (or (occurs? variable (first form))
+        (occurs? variable (next form)))))
 
 (defn find-first-diff
-  "Scan left-to-right, find the first expressions that differ."
   [form1 form2]
-  ;; If either one is not a collection, then we can find the diff right
-  ;; away. They're either equal or not.
-  (if (not (and (coll? form1) (coll? form2)))
+  (if (and (coll? form1) (coll? form2))
 
-    (if (= form1 form2)
-      nil
-      [form1 form2])
+    (or (find-first-diff (first form1) (first form2))
+        (find-first-diff (next form1) (next form2)))
 
-    (let [[x1 & x1s] form1
-          [x2 & x2s] form2]
-      (if (and (coll? x1) (coll? x2))
-        (or (find-first-diff x1 x2) (find-first-diff x1s x2s))
-        (cond
-          (not= x1 x2) [x1 x2]
-          (and (nil? x1) (nil? x2)) nil
-          :else (find-first-diff x1s x2s))))))
+    ;; If we've reached a symbol, or nil, make a decision.
+    (if (not= form1 form2)
+      [form1 form2]
+      nil)))
 
 (defn subst
   "Walk the form, replace all instances of 'to' with 'from'."
@@ -43,9 +42,13 @@
   "Convert literal data forms to lists."
   [form]
   ;; TODO - add vector, others if needed
+  ;; TODO - this might be a bug, if the map contains values that are vectors
+  ;; for example.
   (cond (map? form) (cons 'hash-map (flatten (seq form)))
         (set? form) (cons 'set (seq form))
         :else form))
+
+(flatten (seq {:a {1 2} :b 2}))
 
 (defn unify*
   "Try and unify two forms, returning the set of substitutions if success."
@@ -86,6 +89,6 @@
   (p/p :core-unify (#'clojure.core.unify/unifier- form1 form2))
   (p/p :mine (unify form1 form2)))
 
-#_(p/profile :info :foo (dotimes [n 1000] (doit-with-occurs)))
 #_(p/profile :info :foo (dotimes [n 1000] (doit-no-occurs)))
+(p/profile :info :foo (dotimes [n 1000] (doit-with-occurs)))
 
